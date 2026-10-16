@@ -61,6 +61,8 @@ internal class Program
     private static readonly string Footer = @"Examples: LECmd.exe -f ""C:\Temp\foobar.lnk""" + "\r\n\t " +
                                             @"   LECmd.exe -f ""C:\Temp\somelink.lnk"" --json ""D:\jsonOutput"" --pretty" +
                                             "\r\n\t " +
+                                            @"   LECmd.exe -d ""C:\Temp"" --json ""D:\jsonOutput"" --jsonf results.json -q" +
+                                            "\r\n\t " +
                                             @"   LECmd.exe -d ""C:\Temp"" --csv ""c:\temp"" --html c:\temp --xml c:\temp\xml -q" +
                                             "\r\n\t " +
                                             @"   LECmd.exe -f ""C:\Temp\some other link.lnk"" --nid --neb " +
@@ -157,6 +159,11 @@ internal class Program
                 Description =
                     "Directory to save JSON formatted results to. Be sure to include the full path in double quotes. Use --pretty for a more human readable layout"
             };
+
+            var jsonfOpt = new Option<string>("--jsonf")
+            {
+                Description = "File name to save JSON formatted results to. When present, overrides default name"
+            };
             
             var xmlOpt = new Option<string>(
                 "--xml")
@@ -242,6 +249,7 @@ internal class Program
             csvOpt,
             csvfOpt,
             jsonOpt,
+            jsonfOpt,
             xmlOpt,
             htmlOpt,
             prettyOpt,
@@ -259,7 +267,7 @@ internal class Program
 
         _rootCommand.SetAction(result => DoWork(result.GetValue(fOpt), result.GetValue(dOpt), result.GetValue(rOpt),
             result.GetValue(qOpt), result.GetValue(allOpt), result.GetValue(csvOpt), result.GetValue(csvfOpt),
-            result.GetValue(xmlOpt),result.GetValue(htmlOpt),result.GetValue(jsonOpt),result.GetValue(prettyOpt),result.GetValue(nidOpt),result.GetValue(nebOpt),result.GetValue(dtOpt),result.GetValue(mpOpt),result.GetValue(debugOpt),result.GetValue(traceOpt),result.GetValue(cpOpt)));
+            result.GetValue(xmlOpt),result.GetValue(htmlOpt),result.GetValue(jsonOpt),result.GetValue(jsonfOpt),result.GetValue(prettyOpt),result.GetValue(nidOpt),result.GetValue(nebOpt),result.GetValue(dtOpt),result.GetValue(mpOpt),result.GetValue(debugOpt),result.GetValue(traceOpt),result.GetValue(cpOpt)));
 
 
         // Exit code: 0 = success, 1 = bad arguments, a fatal error, or one or more files that could not be parsed.
@@ -303,7 +311,7 @@ internal class Program
     }
 
     private static int DoWork(string f, string d, bool r, bool q, bool all, string csv, string csvf, string xml,
-        string html, string json, bool pretty, bool nid, bool neb, string dt, bool mp, bool debug, bool trace, int cp)
+        string html, string json, string jsonf, bool pretty, bool nid, bool neb, string dt, bool mp, bool debug, bool trace, int cp)
     {
         _activeDateTimeFormat = dt;
         if (mp)
@@ -571,6 +579,16 @@ internal class Program
 
             try
             {
+                var csvOutputPath = GetOutputFilePath(csv, csvf, "csv", tsNow);
+                var jsonOutputPath = GetOutputFilePath(json, jsonf, "json", tsNow);
+
+                if (csvOutputPath != null && jsonOutputPath != null &&
+                    string.Equals(csvOutputPath, jsonOutputPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    Log.Error("CSV and JSON output paths must be different: {Path}", csvOutputPath);
+                    return 1;
+                }
+
                 CsvWriter csvWriter = null;
                 StreamWriter sw = null;
 
@@ -583,22 +601,13 @@ internal class Program
                         Directory.CreateDirectory(csv);
                     }
 
-                    var outName = $"{tsNow:yyyyMMddHHmmss}_LECmd_Output.csv";
-
-                    if (csvf.IsNullOrEmpty() == false)
-                    {
-                        outName = Path.GetFileName(csvf);
-                    }
-
-                    var outFile = Path.Combine(csv, outName);
-
-                    csv = Path.GetFullPath(outFile);
+                    csv = csvOutputPath;
                     Log.Information(
-                        "CSV output will be saved to {Path}",Path.GetFullPath(outFile));
+                        "CSV output will be saved to {Path}", csvOutputPath);
 
                     try
                     {
-                        sw = new StreamWriter(outFile);
+                        sw = new StreamWriter(csvOutputPath);
                         csvWriter = new CsvWriter(sw, CultureInfo.InvariantCulture);
 
                         csvWriter.WriteHeader(typeof(CsvOut));
@@ -607,7 +616,7 @@ internal class Program
                     catch (Exception ex)
                     {
                         Log.Error(ex,
-                            "Unable to open {OutFile} for writing. CSV export canceled. Error: {Message}",outFile,ex.Message);
+                            "Unable to open {OutFile} for writing. CSV export canceled. Error: {Message}",csvOutputPath,ex.Message);
                     }
                 }
 
@@ -620,7 +629,7 @@ internal class Program
                         Directory.CreateDirectory(json);
                     }
 
-                    Log.Information("Saving json output to {Json}",json);
+                    Log.Information("JSON output will be saved to {Path}", jsonOutputPath);
                 }
 
                 if (xml?.Length > 0)
@@ -647,12 +656,7 @@ internal class Program
                         Directory.CreateDirectory(json);
                     }
 
-                    var outName =
-                        $"{tsNow:yyyyMMddHHmmss}_LECmd_Output.json";
-                    var outFile = Path.Combine(json, outName);
-
-
-                    jsonOut = new StreamWriter(new FileStream(outFile, FileMode.Create, FileAccess.Write),
+                    jsonOut = new StreamWriter(new FileStream(jsonOutputPath, FileMode.Create, FileAccess.Write),
                         new UTF8Encoding(false));
                 }
 
@@ -813,6 +817,20 @@ internal class Program
         return _failedFiles.Count > 0 || exportErrors > 0 ? 1 : 0;
     }
 
+
+    private static string GetOutputFilePath(string directory, string fileName, string extension, DateTimeOffset timestamp)
+    {
+        if (string.IsNullOrEmpty(directory))
+        {
+            return null;
+        }
+
+        var outputName = string.IsNullOrEmpty(fileName)
+            ? $"{timestamp:yyyyMMddHHmmss}_LECmd_Output.{extension}"
+            : Path.GetFileName(fileName);
+
+        return Path.GetFullPath(Path.Combine(directory, outputName));
+    }
 
     private static CsvOut GetCsvFormat(LnkFile lnk, bool nukeNulls, string datetimeFormat)
     {

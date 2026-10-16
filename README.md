@@ -20,6 +20,7 @@
             xml             Directory to save XML formatted results to. Be sure to include the full path in double quotes
             html            Directory to save xhtml formatted results to. Be sure to include the full path in double quotes
             json            Directory to save json representation to. Use --pretty for a more human readable layout
+            jsonf           File name to save JSON formatted results to. When present, overrides default name
             pretty          When exporting to json, use a more human readable layout. Default is FALSE
     
             nid             Suppress Target ID list details from being displayed. Default is FALSE
@@ -30,11 +31,22 @@
     
     Examples: LECmd.exe -f "C:\Temp\foobar.lnk"
               LECmd.exe -f "C:\Temp\somelink.lnk" --json "D:\jsonOutput" --pretty
+              LECmd.exe -d "C:\Temp" --json "D:\jsonOutput" --jsonf results.json -q
               LECmd.exe -d "C:\Temp" --csv "c:\temp" --html c:\temp --xml c:\temp\xml -q
               LECmd.exe -f "C:\Temp\some other link.lnk" --nid --neb
               LECmd.exe -d "C:\Temp" --all
     
               Short options (single letter) are prefixed with a single dash. Long commands are prefixed with two dashes    
+
+`--jsonf` overrides the filename of the single JSON results file written to the
+`--json` directory, for both `-f` and `-d`. Any directory component in `--jsonf`
+is discarded, and the supplied extension is preserved without adding `.json`.
+Without `--json`, `--jsonf` is ignored. Existing output files are overwritten.
+Without `--jsonf`, the filename remains `yyyyMMddHHmmss_LECmd_Output.json`.
+
+CSV and JSON output paths must be different. LECmd compares their full paths
+without case sensitivity and reports an error before opening any export files
+if they match.
 
 ## Documentation
 
